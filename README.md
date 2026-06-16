@@ -132,9 +132,8 @@ push and PR.
 
 MIT — see [LICENSE](LICENSE).
 
----
+## Install as a binary
 
-> Note: the Go module path is `github.com/panchao/gorial`. If you fork or
-> publish under a different account, update the `module` line in `go.mod` and
-> the import paths accordingly (`go mod edit -module <your/path>` plus a
-> find-and-replace on imports).
+```bash
+go install github.com/arthurpanhku/gorial/cmd/gorial@latest
+```

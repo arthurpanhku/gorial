@@ -8,8 +8,8 @@ import (
 	"flag"
 	"log"
 
-	"github.com/panchao/gorial/internal/config"
-	"github.com/panchao/gorial/internal/proxy"
+	"github.com/arthurpanhku/gorial/internal/config"
+	"github.com/arthurpanhku/gorial/internal/proxy"
 )
 
 func main() {

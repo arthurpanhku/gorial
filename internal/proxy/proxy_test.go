@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/panchao/gorial/internal/config"
+	"github.com/arthurpanhku/gorial/internal/config"
 )
 
 func newTestServer(t *testing.T, upstream string, guards []config.GuardConfig) *Server {

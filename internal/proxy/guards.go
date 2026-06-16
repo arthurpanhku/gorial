@@ -3,8 +3,8 @@ package proxy
 import (
 	"fmt"
 
-	"github.com/panchao/gorial/internal/config"
-	"github.com/panchao/gorial/internal/guard"
+	"github.com/arthurpanhku/gorial/internal/config"
+	"github.com/arthurpanhku/gorial/internal/guard"
 )
 
 // buildGuards translates the declarative guard config into concrete guards.

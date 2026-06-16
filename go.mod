@@ -1,4 +1,4 @@
-module github.com/panchao/gorial
+module github.com/arthurpanhku/gorial
 
 go 1.22
 

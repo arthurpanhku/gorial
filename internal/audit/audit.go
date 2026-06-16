@@ -10,7 +10,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/panchao/gorial/internal/config"
+	"github.com/arthurpanhku/gorial/internal/config"
 )
 
 // Entry is a single audit record.

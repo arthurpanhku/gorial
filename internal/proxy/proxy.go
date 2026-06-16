@@ -15,9 +15,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/panchao/gorial/internal/audit"
-	"github.com/panchao/gorial/internal/config"
-	"github.com/panchao/gorial/internal/guard"
+	"github.com/arthurpanhku/gorial/internal/audit"
+	"github.com/arthurpanhku/gorial/internal/config"
+	"github.com/arthurpanhku/gorial/internal/guard"
 )
 
 // Server is the guardrail reverse proxy.
