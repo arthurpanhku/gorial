@@ -5,6 +5,8 @@ package proxy
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -79,28 +81,62 @@ func (s *Server) ListenAndServe() error {
 
 func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
+	requestID := requestID(r)
+	w.Header().Set("X-Gorial-Request-ID", requestID)
+	r.Header.Set("X-Gorial-Request-ID", requestID)
 
-	body, err := io.ReadAll(r.Body)
+	body, tooLarge, err := readLimited(r.Body, s.cfg.Limits.MaxRequestBytes)
 	if err != nil {
 		http.Error(w, `{"error":"gorial: cannot read request body"}`, http.StatusBadRequest)
 		return
 	}
+	if tooLarge {
+		s.logger.Log(audit.Entry{
+			Time:         start,
+			EventID:      newID(),
+			RequestID:    requestID,
+			Direction:    string(guard.Inbound),
+			Method:       r.Method,
+			Path:         r.URL.Path,
+			Decision:     sizeDecision(s.cfg.Limits.OnRequestTooLarge),
+			Blocked:      s.cfg.Limits.OnRequestTooLarge == "block",
+			Bypassed:     s.cfg.Limits.OnRequestTooLarge != "block",
+			BypassReason: "request_too_large",
+			LatencyMS:    msSince(start),
+		})
+		if s.cfg.Limits.OnRequestTooLarge == "block" {
+			_ = r.Body.Close()
+			writeError(w, http.StatusRequestEntityTooLarge, "request blocked by gorial size limit", requestID, nil)
+			return
+		}
+		r.Body = io.NopCloser(io.MultiReader(bytes.NewReader(body), r.Body))
+		r.ContentLength = -1
+		r.Header.Del("Content-Length")
+		s.proxy.ServeHTTP(w, r)
+		return
+	}
 	_ = r.Body.Close()
 
-	dec := s.engine.Evaluate(r.Context(), &guard.Content{Direction: guard.Inbound, Body: body})
+	ctx, cancel := s.guardContext(r.Context())
+	defer cancel()
+	dec := s.engine.Evaluate(ctx, &guard.Content{Direction: guard.Inbound, Body: body})
 
 	s.logger.Log(audit.Entry{
 		Time:      start,
+		EventID:   newID(),
+		RequestID: requestID,
 		Direction: string(guard.Inbound),
 		Method:    r.Method,
 		Path:      r.URL.Path,
+		Decision:  decisionName(dec),
 		Blocked:   dec.Blocked,
+		Redacted:  !dec.Blocked && !bytes.Equal(body, dec.Body),
 		Findings:  findingNames(dec.Findings),
 		LatencyMS: msSince(start),
 	})
 
 	if dec.Blocked {
-		writeBlocked(w, dec.Findings)
+		writeBlocked(w, requestID, dec.Findings)
 		return
 	}
 
@@ -116,17 +152,64 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 // (SSE) responses are passed through untouched because redaction needs the
 // full body; that is a documented v1 limitation.
 func (s *Server) inspectResponse(resp *http.Response) error {
+	requestID := ""
+	if resp.Request != nil {
+		requestID = resp.Request.Header.Get("X-Gorial-Request-ID")
+	}
+	if requestID == "" {
+		requestID = newID()
+	}
+	resp.Header.Set("X-Gorial-Request-ID", requestID)
+
 	if isStreaming(resp) {
+		s.logOutbound(resp, audit.Entry{
+			Time:         time.Now(),
+			EventID:      newID(),
+			RequestID:    requestID,
+			Decision:     "bypass",
+			Bypassed:     true,
+			BypassReason: "streaming_pass_through",
+		})
 		return nil
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	start := time.Now()
+	body, tooLarge, err := readLimited(resp.Body, s.cfg.Limits.MaxResponseBytes)
 	if err != nil {
 		return err
 	}
+	if tooLarge {
+		s.logOutbound(resp, audit.Entry{
+			Time:         start,
+			EventID:      newID(),
+			RequestID:    requestID,
+			Decision:     sizeDecision(s.cfg.Limits.OnResponseTooLarge),
+			Blocked:      s.cfg.Limits.OnResponseTooLarge == "block",
+			Bypassed:     s.cfg.Limits.OnResponseTooLarge != "block",
+			BypassReason: "response_too_large",
+			LatencyMS:    msSince(start),
+		})
+		if s.cfg.Limits.OnResponseTooLarge == "block" {
+			_ = resp.Body.Close()
+			out := []byte(`{"error":"gorial: response blocked by size limit"}`)
+			resp.StatusCode = http.StatusBadGateway
+			resp.Status = http.StatusText(http.StatusBadGateway)
+			resp.Header.Set("Content-Type", "application/json")
+			resp.Body = io.NopCloser(bytes.NewReader(out))
+			resp.ContentLength = int64(len(out))
+			resp.Header.Set("Content-Length", strconv.Itoa(len(out)))
+			return nil
+		}
+		resp.Body = io.NopCloser(io.MultiReader(bytes.NewReader(body), resp.Body))
+		resp.ContentLength = -1
+		resp.Header.Del("Content-Length")
+		return nil
+	}
 	_ = resp.Body.Close()
 
-	dec := s.engine.Evaluate(context.Background(), &guard.Content{Direction: guard.Outbound, Body: body})
+	ctx, cancel := s.guardContext(context.Background())
+	defer cancel()
+	dec := s.engine.Evaluate(ctx, &guard.Content{Direction: guard.Outbound, Body: body})
 
 	out := dec.Body
 	if dec.Blocked {
@@ -136,17 +219,15 @@ func (s *Server) inspectResponse(resp *http.Response) error {
 		resp.Header.Set("Content-Type", "application/json")
 	}
 
-	path := ""
-	if resp.Request != nil {
-		path = resp.Request.URL.Path
-	}
-	s.logger.Log(audit.Entry{
-		Time:      time.Now(),
-		Direction: string(guard.Outbound),
-		Path:      path,
-		Status:    resp.StatusCode,
+	s.logOutbound(resp, audit.Entry{
+		Time:      start,
+		EventID:   newID(),
+		RequestID: requestID,
+		Decision:  decisionName(dec),
 		Blocked:   dec.Blocked,
+		Redacted:  !dec.Blocked && !bytes.Equal(body, out),
 		Findings:  findingNames(dec.Findings),
+		LatencyMS: msSince(start),
 	})
 
 	resp.Body = io.NopCloser(bytes.NewReader(out))
@@ -155,16 +236,37 @@ func (s *Server) inspectResponse(resp *http.Response) error {
 	return nil
 }
 
+func (s *Server) guardContext(parent context.Context) (context.Context, context.CancelFunc) {
+	if s.cfg.Limits.GuardTimeoutMS <= 0 {
+		return context.WithCancel(parent)
+	}
+	return context.WithTimeout(parent, time.Duration(s.cfg.Limits.GuardTimeoutMS)*time.Millisecond)
+}
+
+func (s *Server) logOutbound(resp *http.Response, e audit.Entry) {
+	e.Direction = string(guard.Outbound)
+	e.Status = resp.StatusCode
+	if resp.Request != nil {
+		e.Path = resp.Request.URL.Path
+	}
+	s.logger.Log(e)
+}
+
 func isStreaming(resp *http.Response) bool {
 	return strings.Contains(resp.Header.Get("Content-Type"), "text/event-stream")
 }
 
-func writeBlocked(w http.ResponseWriter, findings []guard.Finding) {
+func writeBlocked(w http.ResponseWriter, requestID string, findings []guard.Finding) {
+	writeError(w, http.StatusForbidden, "request blocked by gorial guardrail", requestID, findingNames(findings))
+}
+
+func writeError(w http.ResponseWriter, status int, message, requestID string, findings []string) {
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusForbidden)
+	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(map[string]any{
-		"error":    "request blocked by gorial guardrail",
-		"findings": findingNames(findings),
+		"error":      message,
+		"request_id": requestID,
+		"findings":   findings,
 	})
 }
 
@@ -178,4 +280,53 @@ func findingNames(findings []guard.Finding) []string {
 
 func msSince(t time.Time) float64 {
 	return float64(time.Since(t).Microseconds()) / 1000.0
+}
+
+func readLimited(r io.Reader, limit int64) ([]byte, bool, error) {
+	if limit <= 0 {
+		body, err := io.ReadAll(r)
+		return body, false, err
+	}
+	body, err := io.ReadAll(io.LimitReader(r, limit+1))
+	if err != nil {
+		return nil, false, err
+	}
+	if int64(len(body)) > limit {
+		return body, true, nil
+	}
+	return body, false, nil
+}
+
+func requestID(r *http.Request) string {
+	for _, header := range []string{"X-Request-ID", "X-Gorial-Request-ID"} {
+		if id := strings.TrimSpace(r.Header.Get(header)); id != "" {
+			return id
+		}
+	}
+	return newID()
+}
+
+func newID() string {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return fmt.Sprintf("%d", time.Now().UnixNano())
+	}
+	return hex.EncodeToString(b[:])
+}
+
+func decisionName(dec guard.Decision) string {
+	if dec.Blocked {
+		return "block"
+	}
+	if len(dec.Findings) > 0 {
+		return "redact"
+	}
+	return "allow"
+}
+
+func sizeDecision(action string) string {
+	if action == "block" {
+		return "block"
+	}
+	return "bypass"
 }

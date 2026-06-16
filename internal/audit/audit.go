@@ -15,14 +15,20 @@ import (
 
 // Entry is a single audit record.
 type Entry struct {
-	Time      time.Time `json:"time"`
-	Direction string    `json:"direction"`
-	Method    string    `json:"method,omitempty"`
-	Path      string    `json:"path"`
-	Status    int       `json:"status,omitempty"`
-	Blocked   bool      `json:"blocked"`
-	Findings  []string  `json:"findings,omitempty"`
-	LatencyMS float64   `json:"latency_ms,omitempty"`
+	Time         time.Time `json:"time"`
+	EventID      string    `json:"event_id,omitempty"`
+	RequestID    string    `json:"request_id,omitempty"`
+	Direction    string    `json:"direction"`
+	Method       string    `json:"method,omitempty"`
+	Path         string    `json:"path"`
+	Status       int       `json:"status,omitempty"`
+	Decision     string    `json:"decision,omitempty"`
+	Blocked      bool      `json:"blocked"`
+	Redacted     bool      `json:"redacted,omitempty"`
+	Bypassed     bool      `json:"bypassed,omitempty"`
+	BypassReason string    `json:"bypass_reason,omitempty"`
+	Findings     []string  `json:"findings,omitempty"`
+	LatencyMS    float64   `json:"latency_ms,omitempty"`
 }
 
 // Logger serializes audit entries to an output sink. It is safe for
@@ -52,8 +58,8 @@ func (l *Logger) Log(e Entry) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if l.format == "text" {
-		fmt.Fprintf(l.w, "%s %-8s %s blocked=%v findings=%v\n",
-			e.Time.Format(time.RFC3339), e.Direction, e.Path, e.Blocked, e.Findings)
+		fmt.Fprintf(l.w, "%s request_id=%s %-8s %s decision=%s blocked=%v bypassed=%v findings=%v\n",
+			e.Time.Format(time.RFC3339), e.RequestID, e.Direction, e.Path, e.Decision, e.Blocked, e.Bypassed, e.Findings)
 		return
 	}
 	_ = json.NewEncoder(l.w).Encode(e)

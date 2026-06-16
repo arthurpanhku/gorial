@@ -1,0 +1,40 @@
+version: "v1"
+listen: ":8080"
+target: "http://localhost:9090"
+
+limits:
+  max_request_bytes: 1048576
+  max_response_bytes: 2097152
+  guard_timeout_ms: 100
+  on_request_too_large: "block"
+  on_response_too_large: "bypass"
+
+streaming:
+  mode: "pass_through"
+
+log:
+  format: "json"
+  include_payload: false
+
+guards:
+  - name: "prompt-injection"
+    type: "regex"
+    action: "block"
+    apply: ["inbound"]
+    patterns:
+      - "(?i)ignore (all|previous|above) instructions"
+      - "(?i)disregard (the|all) (system|previous) prompt"
+      - "(?i)reveal (your|the) (system )?prompt"
+
+  - name: "secret-leak"
+    type: "regex"
+    action: "redact"
+    patterns:
+      - "sk-[A-Za-z0-9]{20,}"
+      - "ghp_[A-Za-z0-9]{36}"
+      - "AKIA[0-9A-Z]{16}"
+
+  - name: "pii-scrub"
+    type: "pii"
+    action: "redact"
+    apply: ["outbound"]
