@@ -254,6 +254,8 @@ var page = template.Must(template.New("page").Parse(`<!doctype html>
       min-height: 220px;
       line-height: 1.45;
       font-size: 13px;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
     }
     @media (max-width: 820px) {
       main { grid-template-columns: 1fr; }
@@ -322,7 +324,7 @@ var page = template.Must(template.New("page").Parse(`<!doctype html>
         httpStatus.className = 'pill ' + statusClass;
         httpStatus.textContent = 'Status: ' + data.status;
         requestId.textContent = 'Request ID: ' + (data.request_id || '-');
-        output.textContent = JSON.stringify(data, null, 2);
+        output.textContent = formatResult(data);
       } catch (err) {
         httpStatus.className = 'pill danger';
         httpStatus.textContent = 'Status: error';
@@ -331,6 +333,18 @@ var page = template.Must(template.New("page").Parse(`<!doctype html>
         sendButton.disabled = false;
       }
     });
+
+    function formatResult(data) {
+      let parsedBody = data.body;
+      try {
+        parsedBody = JSON.parse(data.body);
+      } catch (_) {}
+      return JSON.stringify({
+        status: data.status,
+        request_id: data.request_id,
+        body: parsedBody
+      }, null, 2);
+    }
   </script>
 </body>
 </html>`))

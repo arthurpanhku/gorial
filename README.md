@@ -161,6 +161,8 @@ Then open `http://localhost:3000`. To use a real OpenAI-compatible provider,
 copy [`examples/poc/real-llm.config.yaml`](examples/poc/real-llm.config.yaml),
 set `target`, and run the PoC app with `LLM_API_KEY` and `LLM_MODEL`.
 
+![gorial PoC showing outbound redaction](examples/poc/screenshot.jpg)
+
 ## Limitations & roadmap
 
 - Streaming (SSE) responses are currently passed through without outbound
