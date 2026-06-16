@@ -1,0 +1,23 @@
+# Binaries
+/gorial
+/bin/
+*.exe
+*.out
+
+# Local config & logs
+config.yaml
+*-audit.log
+*.log
+
+# Go workspace / coverage
+go.work
+go.work.sum
+coverage.out
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+
+# Claude Code local settings
+.claude/

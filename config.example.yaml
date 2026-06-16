@@ -1,0 +1,40 @@
+# gorial example policy.
+# Copy to config.yaml and adjust target / guards for your environment.
+
+# Address gorial listens on.
+listen: ":8080"
+
+# Upstream OpenAI-compatible endpoint. All traffic is forwarded here after
+# inbound guards pass.
+target: "https://api.openai.com"
+
+log:
+  format: "json" # json | text
+  # file: "gorial-audit.log"  # omit to log to stdout
+
+guards:
+  # --- Inbound: stop prompt-injection / jailbreak attempts ---
+  - name: "prompt-injection"
+    type: "regex"
+    action: "block"
+    apply: ["inbound"]
+    patterns:
+      - "(?i)ignore (all|previous|above) instructions"
+      - "(?i)disregard (the|all) (system|previous) prompt"
+      - "(?i)you are now (DAN|in developer mode)"
+      - "(?i)reveal (your|the) (system )?prompt"
+
+  # --- Both directions: never let API keys cross the boundary ---
+  - name: "secret-leak"
+    type: "regex"
+    action: "redact"
+    patterns:
+      - "sk-[A-Za-z0-9]{20,}"      # OpenAI-style keys
+      - "ghp_[A-Za-z0-9]{36}"      # GitHub PAT
+      - "AKIA[0-9A-Z]{16}"         # AWS access key id
+
+  # --- Outbound: scrub PII from model responses ---
+  - name: "pii-scrub"
+    type: "pii"
+    action: "redact"
+    apply: ["outbound"]
