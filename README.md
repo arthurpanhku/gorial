@@ -9,6 +9,8 @@ reach the model or come back to the client.
 It ships as a single static binary (`scp` it and run it), uses only the Go
 standard library plus a YAML parser, and runs every guard concurrently.
 
+![gorial PoC showing outbound redaction](examples/poc/screenshot.jpg)
+
 ```
 client ──HTTP──▶  gorial  ──HTTP──▶  OpenAI-compatible LLM
                    │
@@ -46,6 +48,14 @@ Generate a complete starter policy:
 
 ```bash
 ./gorial sample-config > config.yaml
+```
+
+Useful commands:
+
+```bash
+./gorial serve -config config.yaml
+./gorial check -config config.yaml
+./gorial sample-config
 ```
 
 Point your client at gorial instead of the upstream:
@@ -142,8 +152,15 @@ make vet
 make fmt
 ```
 
-CI (GitHub Actions) checks formatting, `go vet`, race tests, and build on every
-push and PR.
+Before pushing changes, run:
+
+```bash
+go test -race ./...
+go vet ./...
+```
+
+Product planning docs live in [`docs/PRD.md`](docs/PRD.md) and
+[`docs/SPEC.md`](docs/SPEC.md).
 
 ## PoC demo
 

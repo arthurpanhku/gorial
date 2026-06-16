@@ -45,6 +45,8 @@ Try the sample buttons:
 
 Watch the gorial terminal for JSON audit events. Each response includes `X-Gorial-Request-ID`, and the UI displays that id.
 
+![gorial PoC showing outbound redaction](screenshot.jpg)
+
 ## Run with a real OpenAI-compatible LLM
 
 Copy and edit the real config:
@@ -75,4 +77,3 @@ The app sends OpenAI-compatible `/v1/chat/completions` requests to gorial. goria
 - PoC app: `:3000` via `POC_APP_ADDR`
 - gorial: `:8080` via config
 - mock LLM: `:9090` via `MOCK_LLM_ADDR`
-
