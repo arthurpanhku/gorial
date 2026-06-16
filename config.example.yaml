@@ -1,6 +1,8 @@
 # gorial example policy.
 # Copy to config.yaml and adjust target / guards for your environment.
 
+version: "v1"
+
 # Address gorial listens on.
 listen: ":8080"
 
@@ -8,8 +10,19 @@ listen: ":8080"
 # inbound guards pass.
 target: "https://api.openai.com"
 
+limits:
+  max_request_bytes: 1048576
+  max_response_bytes: 2097152
+  guard_timeout_ms: 100
+  on_request_too_large: "block"   # block | pass | bypass
+  on_response_too_large: "bypass" # block | pass | bypass
+
+streaming:
+  mode: "pass_through"
+
 log:
   format: "json" # json | text
+  include_payload: false
   # file: "gorial-audit.log"  # omit to log to stdout
 
 guards:
