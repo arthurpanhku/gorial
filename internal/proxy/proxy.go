@@ -132,6 +132,7 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 		Blocked:   dec.Blocked,
 		Redacted:  !dec.Blocked && !bytes.Equal(body, dec.Body),
 		Findings:  findingNames(dec.Findings),
+		Details:   findingDetails(dec.Findings),
 		LatencyMS: msSince(start),
 	})
 
@@ -227,6 +228,7 @@ func (s *Server) inspectResponse(resp *http.Response) error {
 		Blocked:   dec.Blocked,
 		Redacted:  !dec.Blocked && !bytes.Equal(body, out),
 		Findings:  findingNames(dec.Findings),
+		Details:   findingDetails(dec.Findings),
 		LatencyMS: msSince(start),
 	})
 
@@ -276,6 +278,29 @@ func findingNames(findings []guard.Finding) []string {
 		names = append(names, fmt.Sprintf("%s(%s):%s", f.Guard, f.Action, f.Reason))
 	}
 	return names
+}
+
+func findingDetails(findings []guard.Finding) []audit.FindingDetail {
+	var details []audit.FindingDetail
+	for _, f := range findings {
+		for _, d := range f.Details {
+			details = append(details, audit.FindingDetail{
+				PolicyID:       d.PolicyID,
+				Guard:          d.Guard,
+				Detector:       d.Detector,
+				DataClass:      string(d.DataClass),
+				Label:          d.Label,
+				Action:         string(d.Action),
+				Direction:      string(d.Direction),
+				Reason:         d.Reason,
+				Pointer:        d.Pointer,
+				Severity:       string(d.Severity),
+				MatchCount:     d.MatchCount,
+				RedactionCount: d.RedactionCount,
+			})
+		}
+	}
+	return details
 }
 
 func msSince(t time.Time) float64 {
