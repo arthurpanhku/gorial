@@ -15,20 +15,37 @@ import (
 
 // Entry is a single audit record.
 type Entry struct {
-	Time         time.Time `json:"time"`
-	EventID      string    `json:"event_id,omitempty"`
-	RequestID    string    `json:"request_id,omitempty"`
-	Direction    string    `json:"direction"`
-	Method       string    `json:"method,omitempty"`
-	Path         string    `json:"path"`
-	Status       int       `json:"status,omitempty"`
-	Decision     string    `json:"decision,omitempty"`
-	Blocked      bool      `json:"blocked"`
-	Redacted     bool      `json:"redacted,omitempty"`
-	Bypassed     bool      `json:"bypassed,omitempty"`
-	BypassReason string    `json:"bypass_reason,omitempty"`
-	Findings     []string  `json:"findings,omitempty"`
-	LatencyMS    float64   `json:"latency_ms,omitempty"`
+	Time         time.Time       `json:"time"`
+	EventID      string          `json:"event_id,omitempty"`
+	RequestID    string          `json:"request_id,omitempty"`
+	Direction    string          `json:"direction"`
+	Method       string          `json:"method,omitempty"`
+	Path         string          `json:"path"`
+	Status       int             `json:"status,omitempty"`
+	Decision     string          `json:"decision,omitempty"`
+	Blocked      bool            `json:"blocked"`
+	Redacted     bool            `json:"redacted,omitempty"`
+	Bypassed     bool            `json:"bypassed,omitempty"`
+	BypassReason string          `json:"bypass_reason,omitempty"`
+	Findings     []string        `json:"findings,omitempty"`
+	Details      []FindingDetail `json:"finding_details,omitempty"`
+	LatencyMS    float64         `json:"latency_ms,omitempty"`
+}
+
+// FindingDetail is the structured audit form of a guard finding.
+type FindingDetail struct {
+	PolicyID       string `json:"policy_id,omitempty"`
+	Guard          string `json:"guard,omitempty"`
+	Detector       string `json:"detector,omitempty"`
+	DataClass      string `json:"data_class,omitempty"`
+	Label          string `json:"label,omitempty"`
+	Action         string `json:"action,omitempty"`
+	Direction      string `json:"direction,omitempty"`
+	Reason         string `json:"reason,omitempty"`
+	Pointer        string `json:"pointer,omitempty"`
+	Severity       string `json:"severity,omitempty"`
+	MatchCount     int    `json:"match_count,omitempty"`
+	RedactionCount int    `json:"redaction_count,omitempty"`
 }
 
 // Logger serializes audit entries to an output sink. It is safe for

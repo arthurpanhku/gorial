@@ -6,18 +6,24 @@ import (
 )
 
 type piiPattern struct {
-	label string
-	re    *regexp.Regexp
+	label    string
+	class    DataClass
+	severity Severity
+	re       *regexp.Regexp
+	redactor string
 }
 
 // defaultPIIPatterns covers common PII and credential formats. They favour low
 // false-negative rates over precision; tune for your own traffic in practice.
 var defaultPIIPatterns = []piiPattern{
-	{"EMAIL", regexp.MustCompile(`[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}`)},
-	{"CREDIT_CARD", regexp.MustCompile(`\b(?:\d[ -]?){13,16}\b`)},
-	{"SSN", regexp.MustCompile(`\b\d{3}-\d{2}-\d{4}\b`)},
-	{"AWS_ACCESS_KEY", regexp.MustCompile(`AKIA[0-9A-Z]{16}`)},
-	{"OPENAI_KEY", regexp.MustCompile(`sk-[A-Za-z0-9]{20,}`)},
+	{"EMAIL", DataClassPII, SeverityMedium, regexp.MustCompile(`[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}`), "[REDACTED:EMAIL]"},
+	{"CREDIT_CARD", DataClassPII, SeverityHigh, regexp.MustCompile(`\b(?:\d[ -]?){13,16}\b`), "[REDACTED:CREDIT_CARD]"},
+	{"SSN", DataClassPII, SeverityHigh, regexp.MustCompile(`\b\d{3}-\d{2}-\d{4}\b`), "[REDACTED:SSN]"},
+	{"AWS_ACCESS_KEY", DataClassSecret, SeverityCritical, regexp.MustCompile(`AKIA[0-9A-Z]{16}`), "[REDACTED:AWS_ACCESS_KEY]"},
+	{"OPENAI_KEY", DataClassSecret, SeverityCritical, regexp.MustCompile(`sk-[A-Za-z0-9]{20,}`), "[REDACTED:OPENAI_KEY]"},
+	{"GITHUB_TOKEN", DataClassSecret, SeverityCritical, regexp.MustCompile(`ghp_[A-Za-z0-9]{36}`), "[REDACTED:GITHUB_TOKEN]"},
+	{"JWT", DataClassSecret, SeverityHigh, regexp.MustCompile(`eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+`), "[REDACTED:JWT]"},
+	{"PHONE", DataClassPII, SeverityMedium, regexp.MustCompile(`\b(?:\+?1[-.\s]?)?(?:\(?\d{3}\)?[-.\s]?)\d{3}[-.\s]?\d{4}\b`), "[REDACTED:PHONE]"},
 }
 
 // PIIGuard detects and redacts common personally-identifiable information and
@@ -48,19 +54,39 @@ func (g *PIIGuard) Inspect(_ context.Context, c *Content) Finding {
 	body := c.Body
 	matched := false
 	var reason string
+	details := make([]FindingDetail, 0, len(g.patterns))
 	for _, p := range g.patterns {
-		if !p.re.Match(body) {
+		matches := p.re.FindAllIndex(body, -1)
+		if len(matches) == 0 {
 			continue
 		}
 		matched = true
 		reason = "PII:" + p.label
-		if g.action == ActionBlock {
-			return Finding{Guard: g.name, Matched: true, Action: ActionBlock, Reason: reason, Body: c.Body}
+		if p.class == DataClassSecret {
+			reason = "SECRET:" + p.label
 		}
-		body = p.re.ReplaceAll(body, []byte("[REDACTED:"+p.label+"]"))
+		detail := FindingDetail{
+			PolicyID:   g.name,
+			Guard:      g.name,
+			Detector:   "pii",
+			DataClass:  p.class,
+			Label:      p.label,
+			Action:     g.action,
+			Direction:  c.Direction,
+			Reason:     reason,
+			Severity:   p.severity,
+			MatchCount: len(matches),
+		}
+		if g.action == ActionBlock {
+			detail.Severity = severityFor(g.action, p.class)
+			return Finding{Guard: g.name, Matched: true, Action: ActionBlock, Reason: reason, Details: []FindingDetail{detail}, Body: c.Body}
+		}
+		body = p.re.ReplaceAll(body, []byte(p.redactor))
+		detail.RedactionCount = len(matches)
+		details = append(details, detail)
 	}
 	if !matched {
 		return Finding{Guard: g.name, Matched: false, Body: c.Body}
 	}
-	return Finding{Guard: g.name, Matched: true, Action: g.action, Reason: reason, Body: body}
+	return Finding{Guard: g.name, Matched: true, Action: g.action, Reason: reason, Details: details, Body: body}
 }

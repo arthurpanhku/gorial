@@ -21,10 +21,49 @@ const (
 	ActionRedact Action = "redact"
 )
 
+// DataClass identifies the kind of protected data a finding refers to.
+type DataClass string
+
+const (
+	DataClassUnknown           DataClass = "unknown"
+	DataClassPII               DataClass = "PII"
+	DataClassSecret            DataClass = "SECRET"
+	DataClassSystemSecret      DataClass = "SYSTEM_SECRET"
+	DataClassBusinessSensitive DataClass = "BUSINESS_SENSITIVE"
+)
+
+// Severity is a coarse risk level for a finding.
+type Severity string
+
+const (
+	SeverityInfo     Severity = "info"
+	SeverityLow      Severity = "low"
+	SeverityMedium   Severity = "medium"
+	SeverityHigh     Severity = "high"
+	SeverityCritical Severity = "critical"
+)
+
 // Content is the payload under inspection.
 type Content struct {
 	Direction Direction
 	Body      []byte
+}
+
+// FindingDetail is a structured, replay-friendly description of a matched
+// detector result. Pointer is empty until schema-aware parsing is available.
+type FindingDetail struct {
+	PolicyID       string
+	Guard          string
+	Detector       string
+	DataClass      DataClass
+	Label          string
+	Action         Action
+	Direction      Direction
+	Reason         string
+	Pointer        string
+	Severity       Severity
+	MatchCount     int
+	RedactionCount int
 }
 
 // Finding is the result of a single guard inspecting content.
@@ -33,6 +72,9 @@ type Finding struct {
 	Matched bool
 	Action  Action
 	Reason  string
+	// Details contains structured metadata for audit logs, replay and future
+	// benchmark reports. Older callers can keep using Guard/Action/Reason.
+	Details []FindingDetail
 	// Body is the (possibly redacted) body produced by this guard alone.
 	// The engine re-runs redacting guards sequentially to merge them, so
 	// callers should consult Decision.Body for the final result.
@@ -60,4 +102,21 @@ func directionSet(dirs []Direction) map[Direction]bool {
 		m[d] = true
 	}
 	return m
+}
+
+func severityFor(action Action, class DataClass) Severity {
+	if action == ActionBlock {
+		if class == DataClassSecret || class == DataClassSystemSecret {
+			return SeverityCritical
+		}
+		return SeverityHigh
+	}
+	switch class {
+	case DataClassSecret, DataClassSystemSecret:
+		return SeverityHigh
+	case DataClassPII, DataClassBusinessSensitive:
+		return SeverityMedium
+	default:
+		return SeverityLow
+	}
 }
